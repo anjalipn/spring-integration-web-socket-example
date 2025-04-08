@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Traffic Light WebSocket Demo</title>
+    <style>
+        .traffic-light {
+            width: 100px;
+            height: 300px;
+            background-color: #333;
+            border-radius: 20px;
+            margin: 50px auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .light {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin: 10px auto;
+            opacity: 0.3;
+        }
+        .red {
+            background-color: red;
+        }
+        .amber {
+            background-color: yellow;
+        }
+        .green {
+            background-color: green;
+        }
+        .active {
+            opacity: 1;
+            box-shadow: 0 0 20px #fff;
+        }
+        .status {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="traffic-light">
+        <div class="light red" id="red"></div>
+        <div class="light amber" id="amber"></div>
+        <div class="light green" id="green"></div>
+    </div>
+    <div class="status" id="status">Connecting...</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.0/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script>
+        let stompClient = null;
+        let reconnectTimeout = 1000; // Start with 1 second
+        const maxReconnectTimeout = 30000; // Max 30 seconds
+
+        function connect() {
+            try {
+                const socket = new SockJS('/traffic-light');
+                stompClient = Stomp.over(socket);
+                stompClient.debug = null; // Disable debug logging
+
+                stompClient.connect({}, 
+                    function(frame) {
+                        console.log('Connected to WebSocket');
+                        document.getElementById('status').textContent = 'Connected!';
+                        reconnectTimeout = 1000; // Reset reconnect timeout on successful connection
+                        
+                        stompClient.subscribe('/topic/traffic-light', function(message) {
+                            const signal = message.body;
+                            updateLight(signal);
+                        });
+                    }, 
+                    function(error) {
+                        console.log('WebSocket connection error:', error);
+                        document.getElementById('status').textContent = 'Connection lost. Reconnecting...';
+                        
+                        // Clean up
+                        if (stompClient !== null) {
+                            stompClient.disconnect();
+                            stompClient = null;
+                        }
+                        
+                        // Exponential backoff for reconnection
+                        setTimeout(connect, reconnectTimeout);
+                        reconnectTimeout = Math.min(reconnectTimeout * 2, maxReconnectTimeout);
+                    }
+                );
+            } catch (error) {
+                console.error('Error creating WebSocket connection:', error);
+                document.getElementById('status').textContent = 'Error creating connection. Retrying...';
+                setTimeout(connect, reconnectTimeout);
+            }
+        }
+
+        function updateLight(signal) {
+            try {
+                // Reset all lights
+                document.getElementById('red').classList.remove('active');
+                document.getElementById('amber').classList.remove('active');
+                document.getElementById('green').classList.remove('active');
+                
+                // Activate the current light
+                document.getElementById(signal.toLowerCase()).classList.add('active');
+                document.getElementById('status').textContent = `Current Signal: ${signal}`;
+            } catch (error) {
+                console.error('Error updating light:', error);
+            }
+        }
+
+        // Start connection
+        connect();
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible' && stompClient === null) {
+                connect(); // Reconnect if page becomes visible and not connected
+            }
+        });
+    </script>
+</body>
+</html> 
