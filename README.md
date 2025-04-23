@@ -1,18 +1,22 @@
-# Traffic Light WebSocket Demo
+# Task Status Monitor
 
-A Spring Boot application that demonstrates real-time WebSocket communication by simulating a traffic light system. The application sends periodic traffic light signals (RED, AMBER, GREEN) to connected clients.
+A Spring Boot application that demonstrates real-time WebSocket communication by monitoring the status of multiple tasks. The application shows task status updates in real-time using a traffic light visualization system.
 
 ## Features
 
 - Real-time WebSocket communication using STOMP protocol
-- Visual traffic light display
-- Automatic state transitions every 3 seconds
+- Visual traffic light display for task status:
+  - 🔴 Red: Task Error
+  - 🟡 Yellow: Task Executing
+  - 🟢 Green: Task Success
+- Support for monitoring up to 5 different tasks
+- Automatic status updates every 3 seconds
 - Robust connection handling with automatic reconnection
-- Cross-origin support for web clients
+- Detailed status messages for each task state
 
 ## About WebSockets
 
-WebSockets provide a full-duplex, persistent connection between a client and server, allowing real-time bidirectional communication. Unlike traditional HTTP requests which are stateless and require a new connection for each request, WebSockets maintain a single connection that can be used to send messages in both directions. This makes them ideal for applications requiring real-time updates, such as chat applications, live notifications, or in this case, a traffic light simulation. The STOMP (Streaming Text Oriented Messaging Protocol) protocol used in this project provides a higher-level messaging protocol on top of WebSockets, making it easier to implement pub/sub messaging patterns.
+WebSockets provide a full-duplex, persistent connection between a client and server, allowing real-time bidirectional communication. This makes them ideal for applications requiring real-time updates, such as task monitoring, chat applications, or live notifications. The STOMP (Simple Text Oriented Messaging Protocol) protocol used in this project provides a higher-level messaging protocol on top of WebSockets, making it easier to implement pub/sub messaging patterns.
 
 ## Prerequisites
 
@@ -33,12 +37,19 @@ WebSockets provide a full-duplex, persistent connection between a client and ser
    mvn spring-boot:run
    ```
 
-3. Open your web browser and navigate to:
+3. Open your web browser and navigate to any of these URLs:
    ```
-   http://localhost:8080
+   http://localhost:8080/1    # Monitor Task 1
+   http://localhost:8080/2    # Monitor Task 2
+   http://localhost:8080/3    # Monitor Task 3
+   http://localhost:8080/4    # Monitor Task 4
+   http://localhost:8080/5    # Monitor Task 5
    ```
 
-4. You should see a traffic light display that changes states every 3 seconds.
+4. You'll see a traffic light display that shows the current status of the selected task:
+   - Red light: Task has encountered an error
+   - Yellow light: Task is currently executing
+   - Green light: Task completed successfully
 
 ## Project Structure
 
@@ -52,12 +63,16 @@ src/
 │   │           ├── config/
 │   │           │   └── WebSocketConfig.java    # WebSocket configuration
 │   │           ├── controller/
-│   │           │   └── TrafficLightController.java  # WebSocket message handling
+│   │           │   ├── WebController.java      # Web page routing
+│   │           │   └── TaskStatusController.java  # WebSocket message handling
+│   │           ├── model/
+│   │           │   └── TaskStatus.java         # Task status model
 │   │           └── service/
-│   │               └── TrafficLightService.java     # Traffic light logic
+│   │               ├── TaskStatusService.java   # Task status management
+│   │               └── TaskStatusScheduler.java # Status update scheduler
 │   └── resources/
-│       └── static/
-│           └── index.html                      # Web client
+│       └── templates/
+│           └── index.html                      # Task status visualization
 ```
 
 ## Developer Guide
@@ -70,7 +85,6 @@ The `WebSocketConfig` class configures the WebSocket endpoints and message broke
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
-    
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
         config.enableSimpleBroker("/topic");
@@ -79,99 +93,43 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/traffic-light")
+        registry.addEndpoint("/task-status")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
     }
 }
 ```
 
-- `/topic` prefix is used for message broadcasting
-- `/app` prefix is used for client-to-server messages
-- SockJS is enabled for fallback support
+### Task Status Updates
 
-### Traffic Light Service
-
-The `TrafficLightService` handles the traffic light state transitions:
+The `TaskStatusScheduler` service handles periodic task status updates:
 
 ```java
 @Service
-public class TrafficLightService {
-    private String currentSignal = "RED";
-
-    @Scheduled(fixedRate = 3000)
-    public void sendTrafficLightSignal() {
-        switch (currentSignal) {
-            case "RED":
-                currentSignal = "GREEN";
-                break;
-            case "GREEN":
-                currentSignal = "AMBER";
-                break;
-            case "AMBER":
-                currentSignal = "RED";
-                break;
-        }
-        messagingTemplate.convertAndSend("/topic/traffic-light", currentSignal);
+public class TaskStatusScheduler {
+    @Scheduled(fixedRate = 3000) // Update every 3 seconds
+    public void updateTaskStatuses() {
+        // Randomly updates status for tasks 1-5
+        // States: ERROR, EXECUTING, SUCCESS
     }
 }
 ```
 
-- Uses Spring's `@Scheduled` annotation for periodic execution
-- Maintains the current state of the traffic light
-- Sends state updates to all connected clients
-
-### Web Client
-
-The web client (`index.html`) provides a visual representation of the traffic light:
-
-```javascript
-const socket = new SockJS('/traffic-light');
-const stompClient = Stomp.over(socket);
-
-stompClient.connect({}, 
-    function(frame) {
-        stompClient.subscribe('/topic/traffic-light', function(message) {
-            const signal = message.body;
-            updateLight(signal);
-        });
-    }
-);
-```
-
-Features:
-- Automatic reconnection with exponential backoff
-- Visual feedback for connection status
-- Smooth transitions between states
-- Error handling and logging
-
 ### Customization
 
-#### Changing the Timing
+#### Changing Update Frequency
 
-To modify the interval between state changes, update the `@Scheduled` annotation in `TrafficLightService`:
+To modify how often task statuses update, adjust the `fixedRate` value in `TaskStatusScheduler`:
 
 ```java
 @Scheduled(fixedRate = 3000) // Change this value (in milliseconds)
 ```
 
-#### Modifying the Visual Style
+#### Adding More Tasks
 
-The traffic light appearance can be customized by modifying the CSS in `index.html`:
-
-```css
-.traffic-light {
-    width: 100px;
-    height: 300px;
-    /* Add your custom styles here */
-}
-
-.light {
-    width: 80px;
-    height: 80px;
-    /* Add your custom styles here */
-}
-```
+To support more tasks, modify:
+1. The regex pattern in `WebController`: `@GetMapping("/{taskId:[1-5]}")`
+2. The task range in `TaskStatusScheduler`: `for (int i = 1; i <= 5; i++)`
 
 ## Troubleshooting
 
@@ -179,7 +137,7 @@ The traffic light appearance can be customized by modifying the CSS in `index.ht
 
 1. Check if the Spring Boot application is running:
    ```bash
-   curl http://localhost:8080/actuator/health
+   curl http://localhost:8080/1
    ```
 
 2. Verify WebSocket connection in browser console:
@@ -189,9 +147,9 @@ The traffic light appearance can be customized by modifying the CSS in `index.ht
 
 ### Common Issues
 
-1. **CORS Errors**: Ensure the WebSocket endpoint is properly configured with `setAllowedOriginPatterns("*")`
-2. **Connection Drops**: The client includes automatic reconnection logic
-3. **State Not Updating**: Verify the scheduled task is running and messages are being sent
+1. **Port in Use**: If port 8080 is already in use, stop the existing process or configure a different port
+2. **Connection Drops**: The client includes automatic reconnection logic with exponential backoff
+3. **Task Not Found**: Ensure you're using a task ID between 1 and 5
 
 ## Contributing
 

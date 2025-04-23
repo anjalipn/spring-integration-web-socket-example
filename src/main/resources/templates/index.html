@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Traffic Light WebSocket Demo</title>
+    <title>Task Status Monitor</title>
     <style>
         .traffic-light {
             width: 100px;
@@ -40,51 +40,67 @@
             font-size: 24px;
             margin-top: 20px;
         }
+        .task-id {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            font-size: 20px;
+            margin-top: 10px;
+            color: #666;
+        }
+        .message {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            font-size: 18px;
+            margin-top: 10px;
+            color: #444;
+        }
     </style>
 </head>
 <body>
+    <div class="task-id" id="taskId">Task ID: Loading...</div>
     <div class="traffic-light">
         <div class="light red" id="red"></div>
         <div class="light amber" id="amber"></div>
         <div class="light green" id="green"></div>
     </div>
     <div class="status" id="status">Connecting...</div>
+    <div class="message" id="message"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.0/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
     <script>
         let stompClient = null;
-        let reconnectTimeout = 1000; // Start with 1 second
-        const maxReconnectTimeout = 30000; // Max 30 seconds
+        let reconnectTimeout = 1000;
+        const maxReconnectTimeout = 30000;
+        const taskId = window.location.pathname.split('/').pop();
 
         function connect() {
             try {
-                const socket = new SockJS('/traffic-light');
+                const socket = new SockJS('/task-status');
                 stompClient = Stomp.over(socket);
-                stompClient.debug = null; // Disable debug logging
+                stompClient.debug = null;
 
                 stompClient.connect({}, 
                     function(frame) {
                         console.log('Connected to WebSocket');
                         document.getElementById('status').textContent = 'Connected!';
-                        reconnectTimeout = 1000; // Reset reconnect timeout on successful connection
+                        document.getElementById('taskId').textContent = `Task ID: ${taskId}`;
+                        reconnectTimeout = 1000;
                         
-                        stompClient.subscribe('/topic/traffic-light', function(message) {
-                            const signal = message.body;
-                            updateLight(signal);
+                        stompClient.subscribe(`/topic/task/${taskId}`, function(message) {
+                            const status = JSON.parse(message.body);
+                            updateLight(status);
                         });
                     }, 
                     function(error) {
                         console.log('WebSocket connection error:', error);
                         document.getElementById('status').textContent = 'Connection lost. Reconnecting...';
                         
-                        // Clean up
                         if (stompClient !== null) {
                             stompClient.disconnect();
                             stompClient = null;
                         }
                         
-                        // Exponential backoff for reconnection
                         setTimeout(connect, reconnectTimeout);
                         reconnectTimeout = Math.min(reconnectTimeout * 2, maxReconnectTimeout);
                     }
@@ -96,16 +112,34 @@
             }
         }
 
-        function updateLight(signal) {
+        function updateLight(status) {
             try {
                 // Reset all lights
                 document.getElementById('red').classList.remove('active');
                 document.getElementById('amber').classList.remove('active');
                 document.getElementById('green').classList.remove('active');
                 
-                // Activate the current light
-                document.getElementById(signal.toLowerCase()).classList.add('active');
-                document.getElementById('status').textContent = `Current Signal: ${signal}`;
+                // Update status based on task state
+                let statusText = '';
+                switch(status.state) {
+                    case 'ERROR':
+                        document.getElementById('red').classList.add('active');
+                        statusText = 'Task Error';
+                        break;
+                    case 'EXECUTING':
+                        document.getElementById('amber').classList.add('active');
+                        statusText = 'Task Executing';
+                        break;
+                    case 'SUCCESS':
+                        document.getElementById('green').classList.add('active');
+                        statusText = 'Task Completed Successfully';
+                        break;
+                    default:
+                        statusText = 'Unknown Status';
+                }
+                
+                document.getElementById('status').textContent = statusText;
+                document.getElementById('message').textContent = status.message || '';
             } catch (error) {
                 console.error('Error updating light:', error);
             }
@@ -117,7 +151,7 @@
         // Handle page visibility changes
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible' && stompClient === null) {
-                connect(); // Reconnect if page becomes visible and not connected
+                connect();
             }
         });
     </script>
